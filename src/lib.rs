@@ -16,6 +16,7 @@
 //! compared with memcmp.
 
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod de;
 #[cfg(feature = "decimal")]

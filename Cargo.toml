@@ -27,3 +27,7 @@ serde = { version = "1", features = ["derive"] }
 [[bench]]
 name = "serde"
 harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
