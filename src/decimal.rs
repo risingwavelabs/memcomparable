@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+/// An extended decimal number with `NaN`, `-Inf` and `Inf`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Decimal {
     /// Not a Number.

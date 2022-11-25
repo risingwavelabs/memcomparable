@@ -19,5 +19,11 @@ serde = "1"
 thiserror = "1"
 
 [dev-dependencies]
+criterion = "0.4"
 rand = "0.8"
+rust_decimal = { version = "1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
+
+[[bench]]
+name = "serde"
+harness = false

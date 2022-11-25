@@ -24,5 +24,7 @@ mod error;
 mod ser;
 
 pub use de::{from_slice, Deserializer};
+#[cfg(feature = "decimal")]
+pub use decimal::Decimal;
 pub use error::{Error, Result};
 pub use ser::{to_vec, Serializer};
