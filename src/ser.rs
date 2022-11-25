@@ -444,7 +444,6 @@ impl<B: BufMut> Serializer<B> {
     /// The encoding format follows SQLite: https://sqlite.org/src4/doc/trunk/www/key_encoding.wiki
     #[cfg(feature = "decimal")]
     pub fn serialize_decimal(&mut self, decimal: Decimal) -> Result<()> {
-        // https://github.com/pingcap/tidb/blob/fec2938c1379270bf9939822c1abfe3d7244c174/types/mydecimal.go#L1133
         let decimal = match decimal {
             Decimal::NaN => {
                 self.output.put_u8(0x06);
@@ -458,76 +457,98 @@ impl<B: BufMut> Serializer<B> {
                 self.output.put_u8(0x23);
                 return Ok(());
             }
+            Decimal::Normalized(d) if d.is_zero() => {
+                self.output.put_u8(0x15);
+                return Ok(());
+            }
             Decimal::Normalized(d) => d,
         };
-        let mantissa = decimal.mantissa();
-        let scale = decimal.scale();
-        let (exponent, significand) = Self::decimal_e_m(mantissa, scale);
-        match mantissa {
-            1.. => {
-                match exponent {
-                    11.. => {
-                        self.output.put_u8(0x22);
-                        self.output.put_u8(exponent as u8);
-                    }
-                    0..=10 => {
-                        self.output.put_u8(0x17 + exponent as u8);
-                    }
-                    _ => {
-                        self.output.put_u8(0x16);
-                        self.output.put_u8(!(-exponent) as u8);
-                    }
+        let (exponent, significand) = Self::decimal_e_m(decimal);
+        if decimal.is_sign_positive() {
+            match exponent {
+                11.. => {
+                    self.output.put_u8(0x22);
+                    self.output.put_u8(exponent as u8);
                 }
-                self.output.put_slice(&significand);
+                0..=10 => {
+                    self.output.put_u8(0x17 + exponent as u8);
+                }
+                _ => {
+                    self.output.put_u8(0x16);
+                    self.output.put_u8(!(-exponent) as u8);
+                }
             }
-            0 => self.output.put_u8(0x15),
-            _ => {
-                match exponent {
-                    11.. => {
-                        self.output.put_u8(0x8);
-                        self.output.put_u8(!exponent as u8);
-                    }
-                    0..=10 => {
-                        self.output.put_u8(0x13 - exponent as u8);
-                    }
-                    _ => {
-                        self.output.put_u8(0x14);
-                        self.output.put_u8(-exponent as u8);
-                    }
+            self.output.put_slice(&significand);
+        } else {
+            match exponent {
+                11.. => {
+                    self.output.put_u8(0x8);
+                    self.output.put_u8(!exponent as u8);
                 }
-                for b in significand {
-                    self.output.put_u8(!b);
+                0..=10 => {
+                    self.output.put_u8(0x13 - exponent as u8);
                 }
+                _ => {
+                    self.output.put_u8(0x14);
+                    self.output.put_u8(-exponent as u8);
+                }
+            }
+            for b in significand {
+                self.output.put_u8(!b);
             }
         }
         Ok(())
     }
 
-    /// Get the exponent and byte_array form of mantissa.
+    /// Get the exponent and significand mantissa from a decimal.
     #[cfg(feature = "decimal")]
-    fn decimal_e_m(mantissa: i128, scale: u32) -> (i8, Vec<u8>) {
-        if mantissa == 0 {
+    fn decimal_e_m(decimal: rust_decimal::Decimal) -> (i8, Vec<u8>) {
+        if decimal.is_zero() {
             return (0, vec![]);
         }
-        let prec = {
-            let mut abs_man = mantissa.abs();
-            let mut cnt = 0;
-            while abs_man > 0 {
-                cnt += 1;
-                abs_man /= 10;
-            }
-            cnt
-        };
+        const POW10: [u128; 30] = [
+            1,
+            10,
+            100,
+            1000,
+            10000,
+            100000,
+            1000000,
+            10000000,
+            100000000,
+            1000000000,
+            10000000000,
+            100000000000,
+            1000000000000,
+            10000000000000,
+            100000000000000,
+            1000000000000000,
+            10000000000000000,
+            100000000000000000,
+            1000000000000000000,
+            10000000000000000000,
+            100000000000000000000,
+            1000000000000000000000,
+            10000000000000000000000,
+            100000000000000000000000,
+            1000000000000000000000000,
+            10000000000000000000000000,
+            100000000000000000000000000,
+            1000000000000000000000000000,
+            10000000000000000000000000000,
+            100000000000000000000000000000,
+        ];
+        let mut mantissa = decimal.mantissa().abs() as u128;
+        let prec = POW10.as_slice().partition_point(|&p| p <= mantissa);
 
-        let e10 = prec - scale as i32;
+        let e10 = prec as i32 - decimal.scale() as i32;
         let e100 = if e10 >= 0 { (e10 + 1) / 2 } else { e10 / 2 };
         // Maybe need to add a zero at the beginning.
         // e.g. 111.11 -> 2(exponent which is 100 based) + 0.011111(mantissa).
         // So, the `digit_num` of 111.11 will be 6.
         let mut digit_num = if e10 == 2 * e100 { prec } else { prec + 1 };
 
-        let mut byte_array: Vec<u8> = vec![];
-        let mut mantissa = mantissa.abs();
+        let mut byte_array = Vec::with_capacity(16);
         // Remove trailing zero.
         while mantissa % 10 == 0 && mantissa != 0 {
             mantissa /= 10;
@@ -539,6 +560,13 @@ impl<B: BufMut> Serializer<B> {
             mantissa *= 10;
             // digit_num += 1;
         }
+        while mantissa >> 64 != 0 {
+            let byte = (mantissa % 100) as u8 * 2 + 1;
+            byte_array.push(byte);
+            mantissa /= 100;
+        }
+        // optimize for division
+        let mut mantissa = mantissa as u64;
         while mantissa != 0 {
             let byte = (mantissa % 100) as u8 * 2 + 1;
             byte_array.push(byte);
@@ -801,7 +829,7 @@ mod tests {
 
         for (decimal, exponents, significand) in cases {
             let d = decimal.parse::<rust_decimal::Decimal>().unwrap();
-            let (exp, sig) = Serializer::<Vec<u8>>::decimal_e_m(d.mantissa(), d.scale());
+            let (exp, sig) = Serializer::<Vec<u8>>::decimal_e_m(d);
             assert_eq!(exp, exponents, "wrong exponents for decimal: {decimal}");
             assert_eq!(
                 sig.iter()

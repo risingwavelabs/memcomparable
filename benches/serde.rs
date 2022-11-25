@@ -13,23 +13,31 @@
 // limitations under the License.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use memcomparable::{Decimal, Deserializer, Serializer};
 
 criterion_group!(benches, decimal);
 criterion_main!(benches);
 
+#[cfg(not(feature = "decimal"))]
+fn decimal(_c: &mut Criterion) {}
+
+#[cfg(feature = "decimal")]
 fn decimal(c: &mut Criterion) {
+    use memcomparable::{Decimal, Deserializer, Serializer};
+
     // generate decimals
-    let mut decimals = vec![Decimal::NaN, Decimal::NegInf, Decimal::Inf, Decimal::ZERO];
+    let mut decimals = vec![];
     for _ in 0..10 {
         decimals.push(Decimal::Normalized(rand::random()));
     }
 
     c.bench_function("serialize_decimal", |b| {
+        let mut i = 0;
         b.iter(|| {
             let mut ser = Serializer::new(vec![]);
-            for d in &decimals {
-                ser.serialize_decimal(*d).unwrap();
+            ser.serialize_decimal(decimals[i]).unwrap();
+            i += 1;
+            if i == decimals.len() {
+                i = 0;
             }
         })
     });
@@ -43,11 +51,14 @@ fn decimal(c: &mut Criterion) {
                 ser.into_inner()
             })
             .collect::<Vec<_>>();
+        let mut i = 0;
         b.iter(|| {
-            for encoding in &encodings {
-                Deserializer::new(encoding.as_slice())
-                    .deserialize_decimal()
-                    .unwrap();
+            Deserializer::new(encodings[i].as_slice())
+                .deserialize_decimal()
+                .unwrap();
+            i += 1;
+            if i == decimals.len() {
+                i = 0;
             }
         })
     });
