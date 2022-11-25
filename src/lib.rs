@@ -18,6 +18,8 @@
 #![deny(missing_docs)]
 
 mod de;
+#[cfg(feature = "decimal")]
+mod decimal;
 mod error;
 mod ser;
 

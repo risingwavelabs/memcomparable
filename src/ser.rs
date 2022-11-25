@@ -15,6 +15,8 @@
 use bytes::BufMut;
 use serde::{ser, Serialize};
 
+#[cfg(feature = "decimal")]
+use crate::decimal::Decimal;
 use crate::error::{Error, Result};
 
 /// A structure for serializing Rust values into a memcomparable bytes.
@@ -439,78 +441,71 @@ impl<'a, B: BufMut> ser::SerializeStructVariant for &'a mut Serializer<B> {
 impl<B: BufMut> Serializer<B> {
     /// Serialize a decimal value.
     ///
-    /// - `mantissa`: From `rust_decimal::Decimal::mantissa()`. A 96-bits signed integer.
-    /// - `scale`: From `rust_decimal::Decimal::scale()`. A power of 10 ranging from 0 to 28.
-    ///
-    /// The decimal will be encoded to 13 bytes.
-    pub fn serialize_decimal(&mut self, mantissa: i128, scale: u8) -> Result<()> {
+    /// The encoding format follows SQLite: https://sqlite.org/src4/doc/trunk/www/key_encoding.wiki
+    #[cfg(feature = "decimal")]
+    pub fn serialize_decimal(&mut self, decimal: Decimal) -> Result<()> {
         // https://github.com/pingcap/tidb/blob/fec2938c1379270bf9939822c1abfe3d7244c174/types/mydecimal.go#L1133
-        // https://sqlite.org/src4/doc/trunk/www/key_encoding.wiki
-        let (exponent, significand) = Serializer::<B>::decimal_e_m(mantissa, scale);
-        let mut encoded_decimal = vec![];
+        let decimal = match decimal {
+            Decimal::NaN => {
+                self.output.put_u8(0x06);
+                return Ok(());
+            }
+            Decimal::NegInf => {
+                self.output.put_u8(0x07);
+                return Ok(());
+            }
+            Decimal::Inf => {
+                self.output.put_u8(0x23);
+                return Ok(());
+            }
+            Decimal::Normalized(d) => d,
+        };
+        let mantissa = decimal.mantissa();
+        let scale = decimal.scale();
+        let (exponent, significand) = Self::decimal_e_m(mantissa, scale);
         match mantissa {
             1.. => {
                 match exponent {
                     11.. => {
-                        encoded_decimal.push(0x22);
-                        encoded_decimal.push(exponent as u8);
+                        self.output.put_u8(0x22);
+                        self.output.put_u8(exponent as u8);
                     }
                     0..=10 => {
-                        encoded_decimal.push(0x17 + exponent as u8);
+                        self.output.put_u8(0x17 + exponent as u8);
                     }
                     _ => {
-                        encoded_decimal.push(0x16);
-                        encoded_decimal.push(!(-exponent) as u8);
+                        self.output.put_u8(0x16);
+                        self.output.put_u8(!(-exponent) as u8);
                     }
                 }
-                encoded_decimal.extend(significand.iter());
+                self.output.put_slice(&significand);
             }
-            0 => {
-                match scale {
-                    29 => {
-                        // Negative INF
-                        encoded_decimal.push(0x07);
-                    }
-                    30 => {
-                        // Positive INF
-                        encoded_decimal.push(0x23);
-                    }
-                    31 => {
-                        // NaN
-                        encoded_decimal.push(0x06);
-                    }
-                    _ => {
-                        // 0
-                        // Maybe need to change.
-                        encoded_decimal.push(0x15);
-                    }
-                }
-            }
+            0 => self.output.put_u8(0x15),
             _ => {
                 match exponent {
                     11.. => {
-                        encoded_decimal.push(0x8);
-                        encoded_decimal.push(!exponent as u8);
+                        self.output.put_u8(0x8);
+                        self.output.put_u8(!exponent as u8);
                     }
                     0..=10 => {
-                        encoded_decimal.push(0x13 - exponent as u8);
+                        self.output.put_u8(0x13 - exponent as u8);
                     }
                     _ => {
-                        encoded_decimal.push(0x14);
-                        encoded_decimal.push(-exponent as u8);
+                        self.output.put_u8(0x14);
+                        self.output.put_u8(-exponent as u8);
                     }
                 }
-                encoded_decimal.extend(significand.into_iter().map(|m| !m));
+                for b in significand {
+                    self.output.put_u8(!b);
+                }
             }
         }
-        // use 0x00 as the end marker.
-        encoded_decimal.push(0);
-        self.output.put_slice(&encoded_decimal);
         Ok(())
     }
 
     /// Get the exponent and byte_array form of mantissa.
-    pub fn decimal_e_m(mantissa: i128, scale: u8) -> (i8, Vec<u8>) {
+    #[cfg(feature = "decimal")]
+    fn decimal_e_m(mantissa: i128, scale: u32) -> (i8, Vec<u8>) {
         if mantissa == 0 {
             return (0, vec![]);
         }
@@ -523,9 +518,8 @@ impl<B: BufMut> Serializer<B> {
             }
             cnt
         };
-        let scale = scale as i32;
 
-        let e10 = prec - scale;
+        let e10 = prec - scale as i32;
         let e100 = if e10 >= 0 { (e10 + 1) / 2 } else { e10 / 2 };
         // Maybe need to add a zero at the beginning.
         // e.g. 111.11 -> 2(exponent which is 100 based) + 0.011111(mantissa).
@@ -581,13 +575,6 @@ impl<B: BufMut> Serializer<B> {
     pub fn serialize_naivedatetime(&mut self, secs: i64, nsecs: u32) -> Result<()> {
         self.output.put_i64(secs ^ (1 << 63));
         self.output.put_u32(nsecs);
-        Ok(())
-    }
-
-    /// Serialize bytes of ListValue or StructValue.
-    pub fn serialize_struct_or_list(&mut self, bytes: Vec<u8>) -> Result<()> {
-        self.output.put_u32(bytes.len() as u32);
-        self.output.put_slice(bytes.as_slice());
         Ok(())
     }
 }
@@ -774,20 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decimal() {
-        let a = serialize_decimal(12_3456_7890_1234, 4);
-        let b = serialize_decimal(0, 4);
-        let c = serialize_decimal(-12_3456_7890_1234, 4);
-        assert!(a > b && b > c);
-    }
-
-    fn serialize_decimal(mantissa: i128, scale: u8) -> Vec<u8> {
-        let mut serializer = Serializer::new(vec![]);
-        serializer.serialize_decimal(mantissa, scale).unwrap();
-        serializer.into_inner()
-    }
-
-    #[test]
+    #[cfg(feature = "decimal")]
     fn test_decimal_e_m() {
         // from: https://sqlite.org/src4/doc/trunk/www/key_encoding.wiki
         let cases = vec![
@@ -827,7 +801,7 @@ mod tests {
 
         for (decimal, exponents, significand) in cases {
             let d = decimal.parse::<rust_decimal::Decimal>().unwrap();
-            let (exp, sig) = Serializer::<Vec<u8>>::decimal_e_m(d.mantissa(), d.scale() as u8);
+            let (exp, sig) = Serializer::<Vec<u8>>::decimal_e_m(d.mantissa(), d.scale());
             assert_eq!(exp, exponents, "wrong exponents for decimal: {decimal}");
             assert_eq!(
                 sig.iter()
