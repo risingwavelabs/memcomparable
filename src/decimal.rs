@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::{Deserializer, Error, Serializer};
+use std::fmt::Display;
 use std::str::FromStr;
 
 /// An extended decimal number with `NaN`, `-Inf` and `Inf`.
@@ -31,6 +33,24 @@ pub enum Decimal {
 impl Decimal {
     /// A constant representing 0.
     pub const ZERO: Self = Decimal::Normalized(rust_decimal::Decimal::ZERO);
+
+    /// Serialize the decimal into a vector.
+    pub fn to_vec(&self) -> crate::Result<Vec<u8>> {
+        let mut serializer = Serializer::new(vec![]);
+        serializer.serialize_decimal(*self)?;
+        Ok(serializer.into_inner())
+    }
+
+    /// Deserialize a decimal value from a memcomparable bytes.
+    pub fn from_slice(bytes: &[u8]) -> crate::Result<Self> {
+        let mut deserializer = Deserializer::new(bytes);
+        let t = deserializer.deserialize_decimal()?;
+        if !deserializer.has_remaining() {
+            Ok(t)
+        } else {
+            Err(Error::TrailingCharacters)
+        }
+    }
 }
 
 impl From<rust_decimal::Decimal> for Decimal {
@@ -44,10 +64,21 @@ impl FromStr for Decimal {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "nan" => Ok(Decimal::NaN),
-            "-inf" => Ok(Decimal::NegInf),
-            "inf" => Ok(Decimal::Inf),
+            "nan" | "NaN" => Ok(Decimal::NaN),
+            "-inf" | "-Inf" => Ok(Decimal::NegInf),
+            "inf" | "Inf" => Ok(Decimal::Inf),
             _ => Ok(Decimal::Normalized(s.parse()?)),
+        }
+    }
+}
+
+impl Display for Decimal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Decimal::NaN => write!(f, "NaN"),
+            Decimal::NegInf => write!(f, "-Inf"),
+            Decimal::Inf => write!(f, "Inf"),
+            Decimal::Normalized(n) => write!(f, "{}", n),
         }
     }
 }

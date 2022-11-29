@@ -438,7 +438,20 @@ impl<B: BufMut> Serializer<B> {
     /// Serialize a decimal value.
     ///
     /// The encoding format follows `SQLite`: <https://sqlite.org/src4/doc/trunk/www/key_encoding.wiki>
+    ///
+    /// # Example
+    /// ```
+    /// use memcomparable::Decimal;
+    ///
+    /// let d1 = Decimal::Normalized("12.34".parse().unwrap());
+    /// let d2 = Decimal::Inf;
+    ///
+    /// let mut ser = memcomparable::Serializer::new(vec![]);
+    /// ser.serialize_decimal(d1.into()).unwrap();
+    /// ser.serialize_decimal(d2).unwrap();
+    /// ```
     #[cfg(feature = "decimal")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decimal")))]
     pub fn serialize_decimal(&mut self, decimal: Decimal) -> Result<()> {
         let decimal = match decimal {
             Decimal::NaN => {

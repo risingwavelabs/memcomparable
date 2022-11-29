@@ -46,12 +46,6 @@ pub enum Error {
     InvalidDecimalEncoding(u8),
     #[error("trailing characters")]
     TrailingCharacters,
-    #[error("invalid NaiveDate scope: days: {0}")]
-    InvalidNaiveDateEncoding(i32),
-    #[error("invalid NaiveDateTime scope: secs: {0} nsecs: {1}")]
-    InvalidNaiveDateTimeEncoding(i64, u32),
-    #[error("invalid NaiveTime scope: secs: {0} nano: {1}")]
-    InvalidNaiveTimeEncoding(u32, u32),
 }
 
 impl ser::Error for Error {

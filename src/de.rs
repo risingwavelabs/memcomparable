@@ -143,7 +143,7 @@ impl<B: Buf> Deserializer<B> {
         }
     }
 
-    /// Skip the next bytes. Return the length of bytes.
+    /// Skip the next byte array. Return the length of it.
     pub fn skip_bytes(&mut self) -> Result<usize> {
         match self.input.get_u8() {
             0 => return Ok(0), // empty slice
@@ -515,7 +515,16 @@ impl<'de, 'a, B: Buf + 'de> VariantAccess<'de> for &'a mut Deserializer<B> {
 
 impl<B: Buf> Deserializer<B> {
     /// Deserialize a decimal value.
+    ///
+    /// # Example
+    /// ```
+    /// let buf = [0x15];
+    /// let mut de = memcomparable::Deserializer::new(&buf[..]);
+    /// let v = de.deserialize_decimal().unwrap();
+    /// assert_eq!(v.to_string(), "0");
+    /// ```
     #[cfg(feature = "decimal")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decimal")))]
     pub fn deserialize_decimal(&mut self) -> Result<Decimal> {
         // decode exponent
         let flag = self.input.get_u8();
