@@ -40,6 +40,8 @@ impl<B: Buf> Deserializer<B> {
     }
 
     /// Set whether data is serialized in reverse order.
+    ///
+    /// If set, all bits will be flipped in serialization.
     pub fn set_reverse(&mut self, reverse: bool) {
         self.input.flip = reverse;
     }
