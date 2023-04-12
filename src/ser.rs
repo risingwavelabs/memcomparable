@@ -76,6 +76,8 @@ impl<B: BufMut> MaybeFlip<B> {
 
     def_method!(put_u64, u64);
 
+    def_method!(put_u128, u128);
+
     fn put_slice(&mut self, src: &[u8]) {
         for &val in src {
             let val = if self.flip { !val } else { val };
@@ -127,6 +129,11 @@ impl<'a, B: BufMut> ser::Serializer for &'a mut Serializer<B> {
         self.serialize_u64(u)
     }
 
+    fn serialize_i128(self, v: i128) -> Result<()> {
+        let u = v as u128 ^ (1 << 127);
+        self.serialize_u128(u)
+    }
+
     fn serialize_u8(self, v: u8) -> Result<()> {
         self.output.put_u8(v);
         Ok(())
@@ -144,6 +151,11 @@ impl<'a, B: BufMut> ser::Serializer for &'a mut Serializer<B> {
 
     fn serialize_u64(self, v: u64) -> Result<()> {
         self.output.put_u64(v);
+        Ok(())
+    }
+
+    fn serialize_u128(self, v: u128) -> Result<()> {
+        self.output.put_u128(v);
         Ok(())
     }
 

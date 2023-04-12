@@ -109,6 +109,8 @@ impl<B: Buf> MaybeFlip<B> {
 
     def_method!(get_u64, u64);
 
+    def_method!(get_u128, u128);
+
     fn copy_to_slice(&mut self, dst: &mut [u8]) {
         self.input.copy_to_slice(dst);
         if self.flip {
@@ -218,6 +220,14 @@ impl<'de, 'a, B: Buf + 'de> de::Deserializer<'de> for &'a mut Deserializer<B> {
         visitor.visit_i64(v)
     }
 
+    fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let v = (self.input.get_u128() ^ (1 << 127)) as i128;
+        visitor.visit_i128(v)
+    }
+
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -244,6 +254,13 @@ impl<'de, 'a, B: Buf + 'de> de::Deserializer<'de> for &'a mut Deserializer<B> {
         V: Visitor<'de>,
     {
         visitor.visit_u64(self.input.get_u64())
+    }
+
+    fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_u128(self.input.get_u128())
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
