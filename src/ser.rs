@@ -76,6 +76,8 @@ impl<B: BufMut> MaybeFlip<B> {
 
     def_method!(put_u64, u64);
 
+    def_method!(put_u128, u128);
+
     fn put_slice(&mut self, src: &[u8]) {
         for &val in src {
             let val = if self.flip { !val } else { val };
@@ -127,6 +129,11 @@ impl<'a, B: BufMut> ser::Serializer for &'a mut Serializer<B> {
         self.serialize_u64(u)
     }
 
+    fn serialize_i128(self, v: i128) -> Result<()> {
+        let u = v as u128 ^ (1 << 127);
+        self.serialize_u128(u)
+    }
+
     fn serialize_u8(self, v: u8) -> Result<()> {
         self.output.put_u8(v);
         Ok(())
@@ -144,6 +151,11 @@ impl<'a, B: BufMut> ser::Serializer for &'a mut Serializer<B> {
 
     fn serialize_u64(self, v: u64) -> Result<()> {
         self.output.put_u64(v);
+        Ok(())
+    }
+
+    fn serialize_u128(self, v: u128) -> Result<()> {
+        self.output.put_u128(v);
         Ok(())
     }
 
@@ -613,23 +625,37 @@ mod tests {
 
     #[test]
     fn test_tuple() {
-        let tuple: (i8, i16, i32, i64) = (0x12, 0x1234, 0x12345678, 0x1234_5678_8765_4321);
+        let tuple: (i8, i16, i32, i64, i128) = (
+            0x12,
+            0x1234,
+            0x12345678,
+            0x1234_5678_8765_4321,
+            0x0123_4567_89ab_cdef_fedc_ba98_7654_3210,
+        );
         assert_eq!(
             to_vec(&tuple).unwrap(),
             [
                 0x92, 0x92, 0x34, 0x92, 0x34, 0x56, 0x78, 0x92, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43,
-                0x21
+                0x21, 0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76,
+                0x54, 0x32, 0x10,
             ]
         );
 
         #[derive(Serialize)]
-        struct TupleStruct(u8, u16, u32, u64);
-        let tuple = TupleStruct(0x12, 0x1234, 0x12345678, 0x1234_5678_8765_4321);
+        struct TupleStruct(u8, u16, u32, u64, u128);
+        let tuple = TupleStruct(
+            0x12,
+            0x1234,
+            0x12345678,
+            0x1234_5678_8765_4321,
+            0x0123_4567_89ab_cdef_fedc_ba98_7654_3210,
+        );
         assert_eq!(
             to_vec(&tuple).unwrap(),
             [
                 0x12, 0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43,
-                0x21
+                0x21, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76,
+                0x54, 0x32, 0x10,
             ]
         );
 
