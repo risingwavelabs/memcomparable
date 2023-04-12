@@ -629,23 +629,37 @@ mod tests {
     #[test]
     fn test_tuple() {
         assert_eq!(
-            from_slice::<(i8, i16, i32, i64)>(&[
+            from_slice::<(i8, i16, i32, i64, i128)>(&[
                 0x92, 0x92, 0x34, 0x92, 0x34, 0x56, 0x78, 0x92, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43,
-                0x21
+                0x21, 0x81, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76,
+                0x54, 0x32, 0x10,
             ])
             .unwrap(),
-            (0x12, 0x1234, 0x12345678, 0x1234_5678_8765_4321)
+            (
+                0x12,
+                0x1234,
+                0x12345678,
+                0x1234_5678_8765_4321,
+                0x0123_4567_89ab_cdef_fedc_ba98_7654_3210
+            )
         );
 
         #[derive(Debug, PartialEq, Eq, Deserialize)]
-        struct TupleStruct(u8, u16, u32, u64);
+        struct TupleStruct(u8, u16, u32, u64, u128);
         assert_eq!(
             from_slice::<TupleStruct>(&[
                 0x12, 0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43,
-                0x21
+                0x21, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76,
+                0x54, 0x32, 0x10,
             ])
             .unwrap(),
-            TupleStruct(0x12, 0x1234, 0x12345678, 0x1234_5678_8765_4321)
+            TupleStruct(
+                0x12,
+                0x1234,
+                0x12345678,
+                0x1234_5678_8765_4321,
+                0x0123_4567_89ab_cdef_fedc_ba98_7654_3210
+            )
         );
 
         #[derive(Debug, PartialEq, Eq, Deserialize)]
