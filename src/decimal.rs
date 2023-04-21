@@ -20,14 +20,14 @@ use std::str::FromStr;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(docsrs, doc(cfg(feature = "decimal")))]
 pub enum Decimal {
-    /// Not a Number.
-    NaN,
     /// Negative infinity.
     NegInf,
     /// Normalized value.
     Normalized(rust_decimal::Decimal),
     /// Infinity.
     Inf,
+    /// Not a Number.
+    NaN,
 }
 
 impl Decimal {
