@@ -546,7 +546,6 @@ impl<B: Buf> Deserializer<B> {
         // decode exponent
         let flag = self.input.get_u8();
         let exponent = match flag {
-            0x06 => return Ok(Decimal::NaN),
             0x07 => return Ok(Decimal::NegInf),
             0x08 => !self.input.get_u8() as i8,
             0x09..=0x13 => (0x13 - flag) as i8,
@@ -556,6 +555,7 @@ impl<B: Buf> Deserializer<B> {
             0x17..=0x21 => (flag - 0x17) as i8,
             0x22 => self.input.get_u8() as i8,
             0x23 => return Ok(Decimal::Inf),
+            0x24 => return Ok(Decimal::NaN),
             b => return Err(Error::InvalidDecimalEncoding(b)),
         };
         // decode mantissa
@@ -760,7 +760,6 @@ mod tests {
         // Notice: decimals like 100.00 will be decoding as 100.
 
         let decimals = [
-            "nan",
             "-inf",
             "-123456789012345678901234",
             "-1234567890.1234",
@@ -775,6 +774,7 @@ mod tests {
             "41721.900909090909090909090909",
             "123456789012345678901234",
             "inf",
+            "nan",
         ];
         let mut last_encoding = vec![];
         for s in decimals {

@@ -450,6 +450,7 @@ impl<B: BufMut> Serializer<B> {
     /// Serialize a decimal value.
     ///
     /// The encoding format follows `SQLite`: <https://sqlite.org/src4/doc/trunk/www/key_encoding.wiki>
+    /// except that NaN is considered larger than +Infinity, to be consistent with f32 and f64.
     ///
     /// # Example
     /// ```
@@ -467,7 +468,7 @@ impl<B: BufMut> Serializer<B> {
     pub fn serialize_decimal(&mut self, decimal: Decimal) -> Result<()> {
         let decimal = match decimal {
             Decimal::NaN => {
-                self.output.put_u8(0x06);
+                self.output.put_u8(0x24);
                 return Ok(());
             }
             Decimal::NegInf => {
@@ -793,6 +794,24 @@ mod tests {
             .take(len)
             .map(char::from)
             .collect()
+    }
+
+    #[test]
+    fn test_float_order() {
+        let mut last_encoding = vec![];
+        for v in [
+            f32::NEG_INFINITY,
+            f32::MIN,
+            -0.0f32,
+            f32::MIN_POSITIVE,
+            f32::MAX,
+            f32::INFINITY,
+            -f32::NAN,
+        ] {
+            let encoding = to_vec(&v).unwrap();
+            assert!(encoding > last_encoding);
+            last_encoding = encoding;
+        }
     }
 
     #[test]
